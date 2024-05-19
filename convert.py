@@ -2,53 +2,48 @@ import os
 import sys
 from datetime import datetime
 from PIL import Image
-from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.pagesizes import landscape
 from reportlab.pdfgen import canvas
 
-def merge_images_to_pdf(input_folder, images_per_page=2):
+def merge_images_to_pdf(input_folder):
     output_pdf = generate_output_filename(input_folder)
-    c = canvas.Canvas(output_pdf, pagesize=landscape(A4))
+    c = canvas.Canvas(output_pdf, pagesize=landscape((0, 0)))  # Set initial page size to (0, 0)
 
     # Get list of image files in the input folder
     image_paths = [os.path.join(input_folder, file) for file in sorted(os.listdir(input_folder)) if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp'))]
 
-    # Calculate the total number of images
-    num_images = len(image_paths)
+    # Iterate through each pair of images and add them to PDF
+    for i in range(0, len(image_paths), 2):
+        img1_path = image_paths[i]
+        img1 = Image.open(img1_path)
+        img2_path = image_paths[i + 1] if i + 1 < len(image_paths) else None
+        if img2_path:
+            img2 = Image.open(img2_path)
 
-    # Calculate the number of pages needed
-    num_pages = num_images // images_per_page + min(1, num_images % images_per_page)
+            # Adjust image widths if greater than 600
+            img1_width, img1_height = img1.size
+            if img1_width > 600:
+                ratio = 600 / img1_width
+                img1 = img1.resize((600, int(img1_height * ratio)), Image.ANTIALIAS)
 
-    for i in range(num_pages):
-        c.setPageSize(landscape(A4))
-        c.saveState()
+            img2_width, img2_height = img2.size
+            if img2_width > 600:
+                ratio = 600 / img2_width
+                img2 = img2.resize((600, int(img2_height * ratio)), Image.ANTIALIAS)
 
-        # Calculate coordinates for three images on one page
-        page_width, page_height = landscape(A4)
-        x_offset = 10
-        y_offset = 30
-        image_width = (page_width - (images_per_page+1) * x_offset) / images_per_page
-        image_height = page_height - 2 * y_offset
+            # Calculate total width and height for the combined image
+            total_width = img1.width + img2.width
+            max_height = max(img1.height, img2.height)
 
-        for j in range(images_per_page):
-            image_index = i * images_per_page + j
-            if image_index < num_images:
-                image_path = image_paths[image_index]
-                img = Image.open(image_path)
-                width, height = img.size
-                aspect_ratio = width / height
+            # Create a new blank image with the calculated size
+            combined_img = Image.new('RGB', (total_width, max_height))
+            combined_img.paste(img1, (0, 0))
+            combined_img.paste(img2, (img1.width, 0))
 
-                if aspect_ratio > 1:  # Landscape orientation
-                    new_width = image_width
-                    new_height = new_width / aspect_ratio
-                else:  # Portrait orientation
-                    new_height = image_height
-                    new_width = new_height * aspect_ratio
-
-                x_position = j * (x_offset + image_width) + x_offset
-                y_position = y_offset
-                c.drawImage(image_path, x_position, y_position, width=new_width, height=new_height)
-
-        c.showPage()
+            # Set page size based on combined image size
+            c.setPageSize((total_width, max_height))
+            c.drawImage(combined_img, 0, 0)  # Draw combined image at (0, 0) coordinate
+            c.showPage()
 
     c.save()
     return output_pdf
@@ -63,5 +58,5 @@ if __name__ == "__main__":
     # Get the number of images per page from the command line arguments, default to 2 if not provided
     images_per_page = int(sys.argv[2]) if len(sys.argv) > 2 else 2
 
-    output_pdf = merge_images_to_pdf(input_folder, images_per_page)
+    output_pdf = merge_images_to_pdf(input_folder)
     print(f"PDF file '{output_pdf}' has been created.")
